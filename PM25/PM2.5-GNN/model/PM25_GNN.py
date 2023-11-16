@@ -99,6 +99,7 @@ class PM25_GNN(nn.Module):
             x = torch.cat([xn_gnn, x], dim=-1)
 
             hn = self.gru_cell(x, hn)
+            # 将输出值归一化
             xn = hn.view(self.batch_size, self.city_num, self.hid_dim)
             xn = self.fc_out(xn)
             pm25_pred.append(xn)

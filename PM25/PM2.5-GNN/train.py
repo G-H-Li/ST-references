@@ -1,5 +1,6 @@
 import os
 import sys
+
 proj_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(proj_dir)
 from util import config, file_dir
@@ -19,9 +20,6 @@ import torch
 from torch import nn
 from tqdm import tqdm
 import numpy as np
-import pickle
-import glob
-import shutil
 
 torch.set_num_threads(1)
 use_cuda = torch.cuda.is_available()
@@ -64,8 +62,8 @@ def get_metric(predict_epoch, label_epoch):
     csi = hit / (hit + falsealarm + miss)
     pod = hit / (hit + miss)
     far = falsealarm / (hit + falsealarm)
-    predict = predict_epoch[:,:,:,0].transpose((0,2,1))
-    label = label_epoch[:,:,:,0].transpose((0,2,1))
+    predict = predict_epoch[:, :, :, 0].transpose((0, 2, 1))
+    label = label_epoch[:, :, :, 0].transpose((0, 2, 1))
     predict = predict.reshape((-1, predict.shape[-1]))
     label = label.reshape((-1, label.shape[-1]))
     mae = np.mean(np.mean(np.abs(predict - label), axis=1))
@@ -74,22 +72,22 @@ def get_metric(predict_epoch, label_epoch):
 
 
 def get_exp_info():
-    exp_info =  '============== Train Info ==============\n' + \
-                'Dataset number: %s\n' % dataset_num + \
-                'Model: %s\n' % exp_model + \
-                'Train: %s --> %s\n' % (train_data.start_time, train_data.end_time) + \
-                'Val: %s --> %s\n' % (val_data.start_time, val_data.end_time) + \
-                'Test: %s --> %s\n' % (test_data.start_time, test_data.end_time) + \
-                'City number: %s\n' % city_num + \
-                'Use metero: %s\n' % config['experiments']['metero_use'] + \
-                'batch_size: %s\n' % batch_size + \
-                'epochs: %s\n' % epochs + \
-                'hist_len: %s\n' % hist_len + \
-                'pred_len: %s\n' % pred_len + \
-                'weight_decay: %s\n' % weight_decay + \
-                'early_stop: %s\n' % early_stop + \
-                'lr: %s\n' % lr + \
-                '========================================\n'
+    exp_info = '============== Train Info ==============\n' + \
+               'Dataset number: %s\n' % dataset_num + \
+               'Model: %s\n' % exp_model + \
+               'Train: %s --> %s\n' % (train_data.start_time, train_data.end_time) + \
+               'Val: %s --> %s\n' % (val_data.start_time, val_data.end_time) + \
+               'Test: %s --> %s\n' % (test_data.start_time, test_data.end_time) + \
+               'City number: %s\n' % city_num + \
+               'Use metero: %s\n' % config['experiments']['metero_use'] + \
+               'batch_size: %s\n' % batch_size + \
+               'epochs: %s\n' % epochs + \
+               'hist_len: %s\n' % hist_len + \
+               'pred_len: %s\n' % pred_len + \
+               'weight_decay: %s\n' % weight_decay + \
+               'early_stop: %s\n' % early_stop + \
+               'lr: %s\n' % lr + \
+               '========================================\n'
     return exp_info
 
 
@@ -105,9 +103,11 @@ def get_model():
     elif exp_model == 'GC_LSTM':
         return GC_LSTM(hist_len, pred_len, in_dim, city_num, batch_size, device, graph.edge_index)
     elif exp_model == 'PM25_GNN':
-        return PM25_GNN(hist_len, pred_len, in_dim, city_num, batch_size, device, graph.edge_index, graph.edge_attr, wind_mean, wind_std)
+        return PM25_GNN(hist_len, pred_len, in_dim, city_num, batch_size, device, graph.edge_index, graph.edge_attr,
+                        wind_mean, wind_std)
     elif exp_model == 'PM25_GNN_nosub':
-        return PM25_GNN_nosub(hist_len, pred_len, in_dim, city_num, batch_size, device, graph.edge_index, graph.edge_attr, wind_mean, wind_std)
+        return PM25_GNN_nosub(hist_len, pred_len, in_dim, city_num, batch_size, device, graph.edge_index,
+                              graph.edge_attr, wind_mean, wind_std)
     else:
         raise Exception('Wrong model name!')
 
@@ -117,6 +117,7 @@ def train(train_loader, model, optimizer):
     train_loss = 0
     for batch_idx, data in tqdm(enumerate(train_loader)):
         optimizer.zero_grad()
+        # 将数据集处理成pm25值、特征、时间三大属性
         pm25, feature, time_arr = data
         pm25 = pm25.to(device)
         feature = feature.to(device)
@@ -124,7 +125,9 @@ def train(train_loader, model, optimizer):
         pm25_hist = pm25[:, :hist_len]
         pm25_pred = model(pm25_hist, feature)
         loss = criterion(pm25_pred, pm25_label)
+        # 根据loss反向传播
         loss.backward()
+        # 优化器优化
         optimizer.step()
         train_loss += loss.item()
     train_loss /= batch_idx + 1
@@ -164,7 +167,8 @@ def test(test_loader, model):
         loss = criterion(pm25_pred, pm25_label)
         test_loss += loss.item()
 
-        pm25_pred_val = np.concatenate([pm25_hist.cpu().detach().numpy(), pm25_pred.cpu().detach().numpy()], axis=1) * pm25_std + pm25_mean
+        pm25_pred_val = np.concatenate([pm25_hist.cpu().detach().numpy(), pm25_pred.cpu().detach().numpy()],
+                                       axis=1) * pm25_std + pm25_mean
         pm25_label_val = pm25.cpu().detach().numpy() * pm25_std + pm25_mean
         predict_list.append(pm25_pred_val)
         label_list.append(pm25_label_val)
@@ -208,7 +212,8 @@ def main():
 
         optimizer = torch.optim.RMSprop(model.parameters(), lr=lr, weight_decay=weight_decay)
 
-        exp_model_dir = os.path.join(results_dir, '%s_%s' % (hist_len, pred_len), str(dataset_num), model_name, str(exp_time), '%02d' % exp_idx)
+        exp_model_dir = os.path.join(results_dir, '%s_%s' % (hist_len, pred_len), str(dataset_num), model_name,
+                                     str(exp_time), '%02d' % exp_idx)
         if not os.path.exists(exp_model_dir):
             os.makedirs(exp_model_dir)
         model_fp = os.path.join(exp_model_dir, 'model.pth')
@@ -240,7 +245,9 @@ def main():
                 test_loss, predict_epoch, label_epoch, time_epoch = test(test_loader, model)
                 train_loss_, val_loss_ = train_loss, val_loss
                 rmse, mae, csi, pod, far = get_metric(predict_epoch, label_epoch)
-                print('Train loss: %0.4f, Val loss: %0.4f, Test loss: %0.4f, RMSE: %0.2f, MAE: %0.2f, CSI: %0.4f, POD: %0.4f, FAR: %0.4f' % (train_loss_, val_loss_, test_loss, rmse, mae, csi, pod, far))
+                print(
+                    'Train loss: %0.4f, Val loss: %0.4f, Test loss: %0.4f, RMSE: %0.2f, MAE: %0.2f, CSI: %0.4f, POD: %0.4f, FAR: %0.4f' % (
+                    train_loss_, val_loss_, test_loss, rmse, mae, csi, pod, far))
 
                 if save_npy:
                     np.save(os.path.join(exp_model_dir, 'predict.npy'), predict_epoch)
@@ -259,7 +266,7 @@ def main():
         print('\nNo.%2d experiment results:' % exp_idx)
         print(
             'Train loss: %0.4f, Val loss: %0.4f, Test loss: %0.4f, RMSE: %0.2f, MAE: %0.2f, CSI: %0.4f, POD: %0.4f, FAR: %0.4f' % (
-            train_loss_, val_loss_, test_loss, rmse, mae, csi, pod, far))
+                train_loss_, val_loss_, test_loss, rmse, mae, csi, pod, far))
 
     exp_metric_str = '---------------------------------------\n' + \
                      'train_loss | mean: %0.4f std: %0.4f\n' % (get_mean_std(train_loss_list)) + \

@@ -1,7 +1,6 @@
 import yaml
 import sys
 import os
-import numpy as np
 
 
 proj_dir = os.path.dirname(os.path.abspath(__file__))
@@ -10,8 +9,11 @@ conf_fp = os.path.join(proj_dir, 'config.yaml')
 with open(conf_fp) as f:
     config = yaml.load(f, Loader=yaml.FullLoader)
 
+if sys.platform == 'win32':
+    nodename = 'Local'
+else:
+    nodename = os.uname().nodename
 
-nodename = os.uname().nodename
 file_dir = config['filepath'][nodename]
 
 

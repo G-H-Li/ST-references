@@ -10,18 +10,18 @@ experiments:
                'v_component_of_wind+950',]
   save_npy: True
   dataset_num: 3
-  model: MLP
+#  model: MLP
 #  model: LSTM
 #  model: GRU
 #  model: GC_LSTM
 #  model: nodesFC_GRU
-#  model: PM25_GNN
+  model: PM25_GNN
 #  model: PM25_GNN_nosub
 
 train:
   batch_size: 32
   epochs: 50
-  exp_repeat: 10
+  exp_repeat: 1
   hist_len: 1
   pred_len: 24
   weight_decay: 0.0005
@@ -32,6 +32,9 @@ filepath:
   GPU-Server:
     knowair_fp: /data/wangshuo/haze/pm25gnn/KnowAir.npy
     results_dir: /data/wangshuo/haze/pm25gnn/results
+  Local:
+    knowair_fp: D:\PersonalFiles\Project\ST-references\dataset\KnowAir.npy
+    results_dir: D:\PersonalFiles\Project\ST-references\PM25\PM2.5-GNN\results
 
 data:
   metero_var:
