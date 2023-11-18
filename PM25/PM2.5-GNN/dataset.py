@@ -1,5 +1,6 @@
 import os
 import sys
+
 proj_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(proj_dir)
 from util import config, file_dir
@@ -15,11 +16,11 @@ from torch.utils import data
 class HazeData(data.Dataset):
 
     def __init__(self, graph,
-                       hist_len=1,
-                       pred_len=24,
-                       dataset_num=1,
-                       flag='Train',
-                       ):
+                 hist_len=1,
+                 pred_len=24,
+                 dataset_num=1,
+                 flag='Train',
+                 ):
 
         if flag == 'Train':
             start_time_str = 'train_start'
@@ -40,17 +41,26 @@ class HazeData(data.Dataset):
 
         self.knowair_fp = file_dir['knowair_fp']
 
+        # 生成的空间图
         self.graph = graph
 
+        # 读取KnowAir数据集，npy数据的第一个维度为时间戳，每三个小时代表一条数据
         self._load_npy()
+        # 生成时间尺度
         self._gen_time_arr()
+        # 根据时间取出PM2.5、特征、时间戳、时间list
         self._process_time()
+        # 处理特征
         self._process_feature()
         self.feature = np.float32(self.feature)
         self.pm25 = np.float32(self.pm25)
+        # 计算均值和标准差
         self._calc_mean_std()
+        # 数据长度和预测长度
         seq_len = hist_len + pred_len
+        # 根据seq_len拆分成预测数据段
         self._add_time_dim(seq_len)
+        # 归一化
         self._norm()
 
     def _norm(self):
@@ -64,7 +74,7 @@ class HazeData(data.Dataset):
             assert t_len > seq_len
             arr_ts = []
             for i in range(seq_len, t_len):
-                arr_t = arr[i-seq_len:i]
+                arr_t = arr[i - seq_len:i]
                 arr_ts.append(arr_t)
             arr_ts = np.stack(arr_ts, axis=0)
             return arr_ts
@@ -74,24 +84,28 @@ class HazeData(data.Dataset):
         self.time_arr = _add_t(self.time_arr, seq_len)
 
     def _calc_mean_std(self):
-        self.feature_mean = self.feature.mean(axis=(0,1))
-        self.feature_std = self.feature.std(axis=(0,1))
+        self.feature_mean = self.feature.mean(axis=(0, 1))
+        self.feature_std = self.feature.std(axis=(0, 1))
         self.wind_mean = self.feature_mean[-2:]
         self.wind_std = self.feature_std[-2:]
         self.pm25_mean = self.pm25.mean()
         self.pm25_std = self.pm25.std()
 
     def _process_feature(self):
+        # 所有可用特征
         metero_var = config['data']['metero_var']
+        # 使用的特征
         metero_use = config['experiments']['metero_use']
         metero_idx = [metero_var.index(var) for var in metero_use]
-        self.feature = self.feature[:,:,metero_idx]
-
+        self.feature = self.feature[:, :, metero_idx]
+        # 此处-2，-1与metero_use中顺序绑定，并转化为m/s
         u = self.feature[:, :, -2] * units.meter / units.second
         v = self.feature[:, :, -1] * units.meter / units.second
+        # 计算风速、风向
         speed = 3.6 * mpcalc.wind_speed(u, v)._magnitude
         direc = mpcalc.wind_direction(u, v)._magnitude
 
+        # 补充小时和星期几的信息
         h_arr = []
         w_arr = []
         for i in self.time_arrow:
@@ -109,25 +123,31 @@ class HazeData(data.Dataset):
     def _process_time(self):
         start_idx = self._get_idx(self.start_time)
         end_idx = self._get_idx(self.end_time)
-        self.pm25 = self.pm25[start_idx: end_idx+1, :]
-        self.feature = self.feature[start_idx: end_idx+1, :]
-        self.time_arr = self.time_arr[start_idx: end_idx+1]
+        self.pm25 = self.pm25[start_idx: end_idx + 1, :]
+        self.feature = self.feature[start_idx: end_idx + 1, :]
+        self.time_arr = self.time_arr[start_idx: end_idx + 1]
         self.time_arrow = self.time_arrow[start_idx: end_idx + 1]
 
     def _gen_time_arr(self):
         self.time_arrow = []
         self.time_arr = []
+        # 生成间隔3小时，时间尺度
         for time_arrow in arrow.Arrow.interval('hour', self.data_start, self.data_end.shift(hours=+3), 3):
+            # 时间属性
             self.time_arrow.append(time_arrow[0])
+            # 时间戳
             self.time_arr.append(time_arrow[0].timestamp)
         self.time_arr = np.stack(self.time_arr, axis=-1)
 
     def _load_npy(self):
         self.knowair = np.load(self.knowair_fp)
-        self.feature = self.knowair[:,:,:-1]
-        self.pm25 = self.knowair[:,:,-1:]
+        # 去除最后一个特征
+        self.feature = self.knowair[:, :, :-1]
+        # 只保留最后一个特征，作为PM2.5的值
+        self.pm25 = self.knowair[:, :, -1:]
 
     def _get_idx(self, t):
+        # 获取时间对应id
         t0 = self.data_start
         return int((t.timestamp - t0.timestamp) / (60 * 60 * 3))
 
@@ -141,8 +161,10 @@ class HazeData(data.Dataset):
     def __getitem__(self, index):
         return self.pm25[index], self.feature[index], self.time_arr[index]
 
+
 if __name__ == '__main__':
     from graph import Graph
+
     graph = Graph()
     train_data = HazeData(graph, flag='Train')
     val_data = HazeData(graph, flag='Val')
